@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "clojure_mcp",
+  "project_id": "af7b03fd-139c-42f3-bfcf-5f5248c7b649"
+}
