@@ -32,6 +32,3 @@ approval_mode = "approve"
 
 [mcp_servers.clojure-mcp.tools.read_file]
 approval_mode = "approve"
-
-[features]
-hooks = true
