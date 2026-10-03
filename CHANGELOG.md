@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-03
+
+Repositions ClojureMCP around the REPL. Current frontier models edit Clojure reliably with the built-in editors of Claude Code and Codex, so the new `:repl` profile, which gives the agent `clojure_eval`, `list_nrepl_ports` and `paren_repair` and leaves all reading and editing to the host, is now the recommended setup. The structure-aware editors and the rest of the full toolkit still work, but are now in maintenance mode. Also tightens `read_file` output with `cat -n` style line numbers and no markdown wrapping.
+
+### Major Changes
+
+#### New recommended `:repl` profile
+- **`:config-profile :repl`**: REPL-only toolset for CLI coding agents: `clojure_eval`, `list_nrepl_ports` and `paren_repair`, with no prompts or resources. Uses allowlists, so tools added to ClojureMCP later stay off unless the profile lists them. Add structural editors back selectively with `:add-tools`, e.g. `:add-tools '[:clojure_edit]'`.
+- **README rewritten** around the REPL: what ClojureMCP is now, where the project is headed, and `:repl` setup for Claude Code, Codex and Gemini CLI. Claude Desktop setup, the `:cli-assist*` profiles, agent-tool API keys, the full tool list and file-tool configuration moved to [doc/full-toolkit.md](doc/full-toolkit.md).
+
+### Changed
+- **`read_file` line numbers**: The raw view prefixes every line with a `cat -n` style line number (honoring `line_offset`). The collapsed Clojure view numbers every line of expanded forms and shows the starting line of collapsed signatures, including inside reader conditionals.
+- **`read_file` output is plain**: Results no longer include markdown code fences, file-name preambles or repeated usage tips. Truncated reads start with `File truncated: showing N of M lines`, and collapsed text-file views start with a match count.
+
+### Removed
+- **Code indexer**: The `:index` alias (`clojure -X:index`) and `.clojure-mcp/code_index.txt` support are gone. Agent tools' default context is now `PROJECT_SUMMARY.md` (if present) plus the current project structure.
+
 ## [0.5.1] - 2026-06-19
 
 Refines the `:cli-assist-full` profile's instructions so the assistant routes Clojure-file **reads** through `read_file` as firmly as it already routes edits through the structural tools, and rewrites the guidance to be harness-agnostic — referring to the host's native file tools by role rather than by name so it reads correctly under Claude Code, Codex, and Gemini CLI.
