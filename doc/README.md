@@ -6,6 +6,9 @@ This directory contains documentation for creating MCP (Model Context Protocol) 
 
 ### Configuration Guides
 
+### [The Full Toolkit (legacy)](full-toolkit.md)
+Claude Desktop setup, the older editing profiles (`:cli-assist`, `:cli-assist-agent`, `:cli-assist-full`), API keys for the agent tools, the full tool list, and file-tool configuration. In maintenance mode; the recommended setup is the `:repl` profile.
+
 ### [Component Filtering Configuration](component-filtering.md)
 Learn how to control which tools, prompts, and resources are exposed by your MCP server using enable/disable lists. Perfect for creating focused, secure, or specialized MCP servers with only the components you need.
 

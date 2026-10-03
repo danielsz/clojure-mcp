@@ -1,0 +1,28 @@
+;; repl profile: REPL-only toolset for CLI coding agents (Claude Code, Codex,
+;; Gemini CLI). The recommended profile.
+;;
+;; Current frontier models edit Clojure reliably with the host's own editor, so
+;; this profile leaves ALL reading and editing to the host and contributes only
+;; what the host lacks: a persistent nREPL connection.
+;;
+;; Enabled tools:
+;;   - clojure_eval      (REPL evaluation, repairs delimiters before evaluating)
+;;   - list_nrepl_ports  (discover running nREPL servers, incl. shadow-cljs)
+;;   - paren_repair      (safety valve for the rare delimiter tangle)
+;;
+;; Enabled prompts / resources:
+;;   (none)
+;;
+;; Uses allowlists rather than disable lists, so tools added to clojure-mcp in
+;; the future stay off in this profile unless listed here.
+
+{:mcp-instructions
+ "A persistent nREPL connection tool is available for evaluating and testing Clojure, ClojureScript, and Babashka code. Use the REPL to explore, verify assumptions, and test changes as you work.
+
+Use your environment's own tools for reading and editing files. A paren_repair tool is available for a delimiter tangle that is hard to fix by string editing."
+
+ :enable-tools [:clojure_eval :list_nrepl_ports :paren_repair]
+ :enable-prompts []
+ :enable-resources []
+
+ :write-file-guard false}

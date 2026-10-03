@@ -132,7 +132,7 @@ The server-level instructions advertised to the MCP client during initialization
 - `false` - Disables instructions entirely (no `instructions` field is sent).
 
 **Per-profile override:**
-Config profiles are merged last, so a profile can set its own `:mcp-instructions` to tailor the message for that mode (or `false` to disable it). The shipped `cli-assist` and `cli-assist-agent` profiles do this, since in those modes the editing tools are fallbacks. Precedence (highest to lowest): profile → project config → user-home config → built-in default.
+Config profiles are merged last, so a profile can set its own `:mcp-instructions` to tailor the message for that mode (or `false` to disable it). The shipped profiles do this: `repl` tells the agent to use its own tools for reading and editing, and `cli-assist` and `cli-assist-agent` describe the editing tools as fallbacks. Precedence (highest to lowest): profile → project config → user-home config → built-in default.
 
 **When to use each setting:**
 - Default - Fine for most setups; announces the available Clojure tooling without naming specific tools.
