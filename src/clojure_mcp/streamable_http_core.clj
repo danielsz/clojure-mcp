@@ -86,9 +86,10 @@
 
    Args:
    - nrepl-args: Map with connection settings
-     - :port (required if no :project-dir) - nREPL server port
+     - :port (required if no :project-dir or :socket) - nREPL server port
+     - :socket (optional) - Unix domain socket path
      - :host (optional) - nREPL server host (defaults to localhost)
-     - :project-dir (optional) - Root directory for the project. If provided, port is optional.
+     - :project-dir (optional) - Root directory for the project. If provided, the connection target is optional.
      - :mcp-http-port (optional) - HTTP port for the server (defaults to 8078)
 
    - component-factories: Map with factory functions
@@ -134,17 +135,18 @@
    2. Parse the port from process output (if no :port provided)
    3. Pass the discovered port to the main MCP server setup
 
-   Port is only required when :project-dir is NOT provided. When :project-dir is
+   A connection target (:port or :socket) is only required when :project-dir is NOT provided. When :project-dir is
    given, the server starts without an nREPL connection and connects lazily on
    first use (mirroring the stdio transport).
 
    Args:
    - nrepl-args: Map with connection settings and optional nREPL start configuration
-     - :port (required if no :project-dir and not auto-starting) - nREPL server port
+     - :port (required if no :project-dir or :socket and not auto-starting) - nREPL server port
        When provided with :start-nrepl-cmd, uses fixed port instead of parsing
+     - :socket (optional) - Unix domain socket path
      - :host (optional) - nREPL server host (defaults to localhost)
      - :mcp-http-port (optional) - HTTP port for the server (defaults to 8078)
-     - :project-dir (optional) - Root directory for the project. If provided, port is optional.
+     - :project-dir (optional) - Root directory for the project. If provided, the connection target is optional.
      - :start-nrepl-cmd (optional) - Command to start nREPL server (always
        starts a fresh nREPL; ignored when :fallback-nrepl is also set)
      - :fallback-nrepl (optional) - When true, attempts to attach to

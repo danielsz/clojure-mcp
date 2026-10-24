@@ -104,8 +104,11 @@ gemini mcp add clojure-mcp clojure -Tmcp start :config-profile :repl
 ```
 
 By default ClojureMCP connects to the nREPL port in your project's
-`.nrepl-port` file. If you don't keep a REPL running, add
-`:fallback-nrepl true` to have ClojureMCP start one for you, or
+`.nrepl-port` file. If no `.nrepl-port` exists, it also detects a Unix
+domain socket named `nrepl.socket` in the project directory (for example,
+the socket created by [Meyvn](https://github.com/danielsz/meyvn)). If
+you don't keep a REPL running, add `:fallback-nrepl true` to have
+ClojureMCP start one for you, or
 `:start-nrepl-cmd '["clojure" "-M:nrepl"]'` to start your own alias.
 
 **Why an MCP tool instead of evaluating via the shell?** Agents
@@ -194,13 +197,18 @@ Values passed to `clojure -Tmcp start` are EDN values.
 
 `:port 7888`
 
+#### `:socket`
+**Optional** - The path to a Unix domain socket to connect to instead of a TCP port. When omitted, a `nrepl.socket` file in the project directory is detected automatically.
+
+`:socket "/path/to/project/nrepl.socket"`
+
 #### `:host`
 **Optional** - The nREPL server host. Defaults to localhost if not specified.
 
 `:host "localhost"` or `:host "0.0.0.0"`
 
 #### `:not-cwd`
-**Optional** - If true, don't use the current working directory as the project directory. Requires `:port` to be specified. The MCP server will introspect the nREPL connection to discover the project's working directory. Needed for clients that launch the MCP server outside your project directory, such as Claude Desktop.
+**Optional** - If true, don't use the current working directory as the project directory. Requires `:port` or `:socket` to be specified. The MCP server will introspect the nREPL connection to discover the project's working directory. Needed for clients that launch the MCP server outside your project directory, such as Claude Desktop.
 
 `:not-cwd true`
 
@@ -306,6 +314,9 @@ clojure -Tmcp start :config-profile :repl
 
 # REPL only, connecting to a specific port
 clojure -Tmcp start :config-profile :repl :port 7888
+
+# REPL only, connecting to a Unix domain socket
+clojure -Tmcp start :config-profile :repl :socket '"/path/to/project/nrepl.socket"'
 
 # REPL only, spawning an nREPL if none is running
 clojure -Tmcp start :config-profile :repl :fallback-nrepl true

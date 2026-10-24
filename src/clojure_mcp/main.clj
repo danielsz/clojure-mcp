@@ -62,6 +62,7 @@
    Options:
    - :not-cwd - If true, does NOT set project-dir to cwd (default: false)
    - :port - Optional nREPL port (REPL is optional when project-dir is set)
+   - :socket - Optional nREPL Unix domain socket path
    - :fallback-nrepl - If true, attach to :port when reachable, otherwise
      spawn a local nREPL on an ephemeral port (does not collide with
      :port). Useful when you don't always have an editor-managed nREPL

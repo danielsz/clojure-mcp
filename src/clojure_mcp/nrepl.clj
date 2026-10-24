@@ -21,19 +21,30 @@
    :initialized? false
    :project-dir nil})
 
+(defn connection-key
+  "Returns the state key for a connection target.
+   TCP connections are keyed by port (for backward compatibility),
+   Unix domain socket connections by [:unix path]."
+  [service]
+  (if-let [socket (:socket service)]
+    [:unix socket]
+    (:port service)))
+
 (defn create
   "Creates an nREPL service map with state tracking.
-   If port is provided, creates an initial entry for that port."
+   If a port or socket is provided, creates an initial entry for that target."
   ([] (create nil))
   ([config]
-   (let [port (:port config)
-         initial-state {:ports (if port {port (make-port-entry)} {})}
+   (let [target (connection-key config)
+         initial-state {:ports (if target {target (make-port-entry)} {})}
          state (atom initial-state)]
      (assoc config ::state state))))
 
 (defn- connect [service]
-  (let [{:keys [host port]} service]
-    (nrepl/connect :host (or host "localhost") :port port)))
+  (if-let [socket (:socket service)]
+    (nrepl/connect :socket socket)
+    (let [{:keys [host port]} service]
+      (nrepl/connect :host (or host "localhost") :port port))))
 
 (defn open-connection
   "Opens an nREPL transport and client pair for the given service.
@@ -54,13 +65,13 @@
   (nrepl.misc/uuid))
 
 (defn- get-stored-session [service session-type]
-  (let [port (:port service)
+  (let [target (connection-key service)
         state @(get-state service)]
-    (get-in state [:ports port :sessions session-type])))
+    (get-in state [:ports target :sessions session-type])))
 
 (defn- update-stored-session! [service session-type session-id]
-  (let [port (:port service)]
-    (swap! (get-state service) assoc-in [:ports port :sessions session-type] session-id)))
+  (let [target (connection-key service)]
+    (swap! (get-state service) assoc-in [:ports target :sessions session-type] session-id)))
 
 (defn- session-valid? [client session-id]
   (try
@@ -88,67 +99,67 @@
 (defn current-ns
   "Returns the current namespace for the given session type."
   [service session-type]
-  (let [port (:port service)
+  (let [target (connection-key service)
         state @(get-state service)]
-    (get-in state [:ports port :current-ns session-type])))
+    (get-in state [:ports target :current-ns session-type])))
 
 (defn- update-current-ns! [service session-type new-ns]
-  (let [port (:port service)]
-    (swap! (get-state service) assoc-in [:ports port :current-ns session-type] new-ns)))
+  (let [target (connection-key service)]
+    (swap! (get-state service) assoc-in [:ports target :current-ns session-type] new-ns)))
 
 ;; -----------------------------------------------------------------------------
-;; Per-port state accessors for env-type, initialized?, and project-dir
+;; Per-connection state accessors for env-type, initialized?, and project-dir
 ;; -----------------------------------------------------------------------------
 
 (defn get-port-env-type
-  "Returns the env-type for the service's current port, or nil if not yet detected."
+  "Returns the env-type for the service's current connection, or nil if not yet detected."
   [service]
-  (let [port (:port service)
+  (let [target (connection-key service)
         state @(get-state service)]
-    (get-in state [:ports port :env-type])))
+    (get-in state [:ports target :env-type])))
 
 (defn set-port-env-type!
-  "Sets the env-type for the service's current port."
+  "Sets the env-type for the service's current connection."
   [service env-type]
-  (let [port (:port service)]
-    (swap! (get-state service) assoc-in [:ports port :env-type] env-type)))
+  (let [target (connection-key service)]
+    (swap! (get-state service) assoc-in [:ports target :env-type] env-type)))
 
 (defn port-initialized?
-  "Returns true if the service's current port has been initialized."
+  "Returns true if the service's current connection has been initialized."
   [service]
-  (let [port (:port service)
+  (let [target (connection-key service)
         state @(get-state service)]
-    (get-in state [:ports port :initialized?] false)))
+    (get-in state [:ports target :initialized?] false)))
 
 (defn set-port-initialized!
-  "Marks the service's current port as initialized."
+  "Marks the service's current connection as initialized."
   [service]
-  (let [port (:port service)]
-    (swap! (get-state service) assoc-in [:ports port :initialized?] true)))
+  (let [target (connection-key service)]
+    (swap! (get-state service) assoc-in [:ports target :initialized?] true)))
 
 (defn get-port-project-dir
-  "Returns the project directory for the service's current port, or nil."
+  "Returns the project directory for the service's current connection, or nil."
   [service]
-  (let [port (:port service)
+  (let [target (connection-key service)
         state @(get-state service)]
-    (get-in state [:ports port :project-dir])))
+    (get-in state [:ports target :project-dir])))
 
 (defn set-port-project-dir!
-  "Sets the project directory for the service's current port."
+  "Sets the project directory for the service's current connection."
   [service project-dir]
-  (let [port (:port service)]
-    (swap! (get-state service) assoc-in [:ports port :project-dir] project-dir)))
+  (let [target (connection-key service)]
+    (swap! (get-state service) assoc-in [:ports target :project-dir] project-dir)))
 
 (defn ensure-port-entry!
-  "Ensures the port has an entry in the state atom. Used for lazy port addition.
-   Returns the service unchanged."
+  "Ensures the current connection has an entry in the state atom.
+   Used for lazy target addition. Returns the service unchanged."
   [service]
-  (let [port (:port service)]
+  (let [target (connection-key service)]
     (swap! (get-state service) update :ports
            (fn [ports]
-             (if (contains? ports port)
+             (if (or (nil? target) (contains? ports target))
                ports
-               (assoc ports port (make-port-entry))))))
+               (assoc ports target (make-port-entry))))))
   service)
 
 (def truncation-length 10000)
@@ -330,48 +341,85 @@
 ;; Lazy per-port initialization
 ;; -----------------------------------------------------------------------------
 
+(defn- target-description [service]
+  (if-let [socket (:socket service)]
+    (str "socket " socket)
+    (str "port " (:port service))))
+
 (defn detect-and-store-env-type!
-  "Detects the environment type for the given service's port and stores it.
+  "Detects the environment type for the given service's connection and stores it.
    Returns the detected env-type. Does nothing if already detected."
   [service]
   (or (get-port-env-type service)
       (let [env-type (detect-nrepl-env-type service)]
         (set-port-env-type! service env-type)
-        (log/info "Detected env-type for port" (:port service) ":" env-type)
+        (log/info "Detected env-type for" (target-description service) ":" env-type)
         env-type)))
 
 (defn initialize-port!
-  "Initializes a port: runs init expressions and loads helpers.
+  "Initializes a connection target: runs init expressions and loads helpers.
    Does nothing if already initialized. Not thread-safe - use ensure-port-initialized!
    Returns the service."
   [service]
   (ensure-port-entry! service)
   (when-not (port-initialized? service)
-    (log/info "Initializing port" (:port service))
+    (log/info "Initializing" (target-description service))
     (let [env-type (detect-and-store-env-type! service)]
       (initialize-environment service env-type)
       (load-repl-helpers service env-type)
       (set-port-initialized! service)
-      (log/info "Port" (:port service) "initialized successfully")))
+      (log/info (target-description service) "initialized successfully")))
   service)
 
 (defn ensure-port-initialized!
-  "Ensures a port is initialized before use.
+  "Ensures the current connection target is initialized before use.
    Returns the service unchanged."
   [service]
   (cond-> service
     (not (port-initialized? service)) initialize-port!))
 
+(defn with-target
+  "Returns a service map configured for the specified connection target.
+   Target is either {:port n} or {:socket path}.
+   Ensures the target entry exists in state but does NOT initialize."
+  [service {:keys [port socket]}]
+  (cond
+    (and (nil? port) (nil? socket))
+    service
+
+    (and socket
+         (= socket (:socket service))
+         (nil? (:port service)))
+    service
+
+    (and port
+         (= port (:port service))
+         (nil? (:socket service)))
+    service
+
+    :else
+    (-> service
+        (dissoc :port :socket)
+        (cond-> socket (assoc :socket socket)
+                port (assoc :port port))
+        ensure-port-entry!)))
+
+(defn with-target-initialized
+  "Returns a service map for the specified connection target, ensuring it is
+   initialized. Target is either {:port n} or {:socket path}."
+  [service target]
+  (-> service
+      (with-target target)
+      ensure-port-initialized!))
+
 (defn with-port
   "Returns a service map configured for the specified port.
-   If port is nil or same as current, returns service unchanged.
+   If port is nil, returns service unchanged.
    Ensures the port entry exists in state but does NOT initialize."
   [service port]
-  (if (or (nil? port) (= port (:port service)))
+  (if (nil? port)
     service
-    (-> service
-        (assoc :port port)
-        ensure-port-entry!)))
+    (with-target service {:port port})))
 
 (defn with-port-initialized
   "Returns a service map for the specified port, ensuring it is initialized.
@@ -393,3 +441,40 @@
               str/trim
               Integer/parseInt)
           (catch Exception _ nil))))))
+
+(def nrepl-socket-filename
+  "Filename used by Meyvn for the nREPL Unix domain socket."
+  "nrepl.socket")
+
+(defn read-nrepl-socket-file
+  "Returns the canonical path of the nrepl.socket file in dir, or nil.
+   A Unix domain socket is a filesystem entry but not a regular file."
+  [dir]
+  (when dir
+    (let [socket-file (io/file dir nrepl-socket-filename)]
+      (when (and (.exists socket-file)
+                 (not (.isDirectory socket-file)))
+        (try
+          (.getCanonicalPath socket-file)
+          (catch Exception _ nil))))))
+
+(defn resolve-socket-path
+  "Resolves path against dir unless it is already absolute.
+   Returns nil when path is nil."
+  [dir path]
+  (when path
+    (let [f (io/file path)]
+      (.getCanonicalPath
+       (if (or (.isAbsolute f) (nil? dir))
+         f
+         (io/file dir path))))))
+
+(defn resolve-connection-target
+  "Resolves the connection target for a service working in dir.
+   Precedence: service :socket, service :port, .nrepl-port, nrepl.socket.
+   Returns {:port n}, {:socket path}, or nil."
+  [service dir]
+  (or (when-let [socket (:socket service)] {:socket socket})
+      (when-let [port (:port service)] {:port port})
+      (when-let [port (read-nrepl-port-file dir)] {:port port})
+      (when-let [socket (read-nrepl-socket-file dir)] {:socket socket})))

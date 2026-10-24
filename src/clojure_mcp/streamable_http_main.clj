@@ -32,6 +32,7 @@
    Options:
    - :not-cwd - If true, does NOT set project-dir to cwd (default: false)
    - :port - Optional nREPL port (REPL is optional when project-dir is set)
+   - :socket - Optional nREPL Unix domain socket path
    - :mcp-http-port - HTTP port for the Streamable HTTP server (required)
    - All other options supported by start-streamable-http-mcp-server"
   [opts]

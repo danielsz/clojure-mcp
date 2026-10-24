@@ -361,17 +361,19 @@
    REPL initialization (env detection, init expressions, helpers) happens lazily
    when the first eval-code call is made.
 
-   Takes initial-config map with optional :port, :host, :project-dir, :nrepl-env-type,
-   :config-file, :config-profile, :shadow-cljs-repl-message.
+   Takes initial-config map with optional :port, :socket, :host, :project-dir,
+   :nrepl-env-type, :config-file, :config-profile, :shadow-cljs-repl-message.
    - If :project-dir is provided, uses it directly (no REPL query needed)
-   - If :project-dir is NOT provided, queries REPL for project directory (requires :port)
+   - If :project-dir is NOT provided, queries REPL for project directory
+     (requires :port or :socket)
    - If :config-profile is provided, merges profile overlay on top of base config
 
    Returns the configured nrepl-client-map with ::config/config attached."
-  [{:keys [project-dir config-file config-profile port] :as initial-config}]
-  (if port
-    (log/info "Creating nREPL client for port" port)
-    (log/info "Starting without nREPL connection (project-dir mode)"))
+  [{:keys [project-dir config-file config-profile port socket] :as initial-config}]
+  (cond
+    socket (log/info "Creating nREPL client for Unix socket" socket)
+    port (log/info "Creating nREPL client for port" port)
+    :else (log/info "Starting without nREPL connection (project-dir mode)"))
   (try
     (let [nrepl-client-map (nrepl/create (apply dissoc initial-config
                                                 :project-dir :nrepl-env-type :config-profile
@@ -400,22 +402,25 @@
       (throw e))))
 
 (defn create-additional-connection
-  "Creates a service map for an additional port. Initialization is lazy.
-   The returned service shares the base client's state atom and config,
-   but targets a different port.
+  "Creates a service map for an additional port or Unix socket.
+   Initialization is lazy. The returned service shares the base client's
+   state atom and config, but targets a different connection.
 
    Note: The third argument (initialize-fn) is deprecated and ignored.
    Initialization now happens lazily via nrepl/ensure-port-initialized!"
   ([nrepl-client-atom initial-config]
    (create-additional-connection nrepl-client-atom initial-config nil))
-  ([nrepl-client-atom {:keys [port host]} _deprecated-initialize-fn]
-   (log/info "Creating additional connection config for port" port)
+  ([nrepl-client-atom {:keys [port socket host]} _deprecated-initialize-fn]
+   (log/info "Creating additional connection config for"
+             (or socket (str "port " port)))
    (let [base-client @nrepl-client-atom]
      (assert (::config/config base-client) "Base client must have config")
      (-> base-client
-         (assoc :port port)
-         (cond-> host (assoc :host host))
-         ;; Ensure port entry exists but don't initialize yet (lazy init)
+         (dissoc :port :socket)
+         (cond-> port (assoc :port port)
+                 socket (assoc :socket socket)
+                 host (assoc :host host))
+         ;; Ensure target entry exists but don't initialize yet (lazy init)
          nrepl/ensure-port-entry!))))
 
 (defn close-servers
@@ -441,6 +446,7 @@
       (throw e))))
 
 (s/def ::port pos-int?)
+(s/def ::socket string?)
 (s/def ::host string?)
 (s/def ::nrepl-env-type keyword?)
 (s/def ::project-dir (s/and string?
@@ -461,9 +467,10 @@
                                            (and (.exists f) (.isDirectory f)))
                                          (catch Exception _ false))))
 (s/def ::nrepl-args (s/keys :req-un []
-                            :opt-un [::port ::host ::config-file ::project-dir ::nrepl-env-type
-                                     ::start-nrepl-cmd ::config-profile ::shadow-cljs-repl-message
-                                     ::fallback-nrepl ::fallback-nrepl-cmd ::fallback-nrepl-dir]))
+                            :opt-un [::port ::socket ::host ::config-file ::project-dir
+                                     ::nrepl-env-type ::start-nrepl-cmd ::config-profile
+                                     ::shadow-cljs-repl-message ::fallback-nrepl
+                                     ::fallback-nrepl-cmd ::fallback-nrepl-dir]))
 
 (def nrepl-client-atom (atom nil))
 
@@ -489,21 +496,21 @@
       opts)))
 
 (defn ensure-port
-  "Ensures the args map contains a :port key.
-   Throws an exception with helpful context if port is missing.
-   
+  "Ensures the args map contains a :port or :socket key.
+   Throws an exception with helpful context if neither is present.
+
    Args:
-   - args: Map that should contain :port
-   
-   Returns: args unchanged if :port exists
-   
-   Throws: ExceptionInfo if :port is missing"
+   - args: Map that should contain :port or :socket
+
+   Returns: args unchanged if a connection target exists
+
+   Throws: ExceptionInfo if neither :port nor :socket is present"
   [args]
-  (if (:port args)
+  (if (or (:port args) (:socket args))
     args
     (throw
      (ex-info
-      "No nREPL port available - either provide :port or configure auto-start"
+      "No nREPL connection target available - either provide :port, :socket, or configure auto-start"
       {:provided-args args}))))
 
 (defn register-components
@@ -605,9 +612,10 @@
 
    Args:
    - nrepl-args: Map with connection settings
-     - :port (required if no :project-dir) - nREPL server port
+     - :port (required if no :project-dir or :socket) - nREPL server port
+     - :socket (optional) - Unix domain socket path
      - :host (optional) - nREPL server host (defaults to localhost)
-     - :project-dir (optional) - Root directory for the project. If provided, port is optional.
+     - :project-dir (optional) - Root directory for the project. If provided, the connection target is optional.
 
    - component-factories: Map with factory functions
      - :make-tools-fn - (fn [nrepl-client-atom working-dir] ...) returns seq of tools
@@ -642,12 +650,13 @@
     nil))
 
 (defn ensure-port-if-needed
-  "Ensures port is present when project-dir is NOT provided.
-   When project-dir IS provided, port is optional (REPL not needed for config loading)."
+  "Ensures a connection target is present when project-dir is NOT provided.
+   When project-dir IS provided, the target is optional (REPL not needed for
+   config loading)."
   [args]
   (if (:project-dir args)
-    args ;; project-dir provided, port is optional
-    (ensure-port args))) ;; no project-dir, port is required
+    args ;; project-dir provided, connection target is optional
+    (ensure-port args))) ;; no project-dir, :port or :socket is required
 
 (defn build-and-start-mcp-server
   "Builds and starts an MCP server with optional automatic nREPL startup.
@@ -659,14 +668,16 @@
    2. Parse the port from process output (if no :port provided)
    3. Pass the discovered port to the main MCP server setup
 
-   Port is only required when :project-dir is NOT provided (need REPL to discover project dir).
+   A connection target (:port or :socket) is only required when :project-dir is
+   NOT provided (need REPL to discover project dir).
 
    Args:
    - nrepl-args: Map with connection settings and optional nREPL start
      configuration
-     - :port (required if no :project-dir) - nREPL server port
+     - :port (required if no :project-dir or :socket) - nREPL server port
+     - :socket (optional) - Unix domain socket path
      - :host (optional) - nREPL server host (defaults to localhost)
-     - :project-dir (optional) - Root directory for the project. If provided, port is optional.
+     - :project-dir (optional) - Root directory for the project. If provided, the connection target is optional.
      - :start-nrepl-cmd (optional) - Command to start nREPL server (always
        starts a fresh nREPL; ignored when :fallback-nrepl is also set)
      - :fallback-nrepl (optional) - When true, attempts to attach to

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **Unix domain socket support**: nREPL connections can use a Unix domain socket via the new `:socket` option. When no `.nrepl-port` is present, ClojureMCP also auto-detects a `nrepl.socket` file in the project directory (for example, the socket created by Meyvn). `list_nrepl_ports` discovers socket servers alongside TCP servers.
+
 ## [0.6.0] - 2026-10-03
 
 Repositions ClojureMCP around the REPL. Current frontier models edit Clojure reliably with the built-in editors of Claude Code and Codex, so the new `:repl` profile, which gives the agent `clojure_eval`, `list_nrepl_ports` and `paren_repair` and leaves all reading and editing to the host, is now the recommended setup. The structure-aware editors and the rest of the full toolkit still work, but are now in maintenance mode. Also tightens `read_file` output with `cat -n` style line numbers and no markdown wrapping.

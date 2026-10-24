@@ -28,11 +28,11 @@
 
 (defmethod tool-system/tool-description :list-nrepl-ports [_]
   "Discover and list all running nREPL servers on this machine.
- - Checks for .nrepl-port files in the current directory
+ - Checks for .nrepl-port and nrepl.socket files in the current directory
  - Scans for Java/Clojure/Babashka processes listening on TCP ports
- - Validates each port responds to nREPL protocol
+ - Validates each target responds to the nREPL protocol
  - Returns detailed info including environment type (clj, bb, shadow, etc.) and project directory
- - Useful for finding available REPLs to connect to")
+ - Useful for finding available REPLs to connect to, including Unix domain sockets")
 
 (defmethod tool-system/tool-schema :list-nrepl-ports [_]
   {:type :object
@@ -62,37 +62,38 @@
     "n/a"))
 
 (defn format-port-info
-  "Format a single port info map for concise display."
+  "Format a single connection info map for concise display."
   [port-info show-project-dir?]
-  (let [{:keys [host port valid env-type project-dir]} port-info]
+  (let [{:keys [host port socket valid env-type project-dir]} port-info
+        target (if socket (str "unix:" socket) (str host ":" port))]
     (if valid
-      (str "  " host ":" port " (" (format-env-type env-type) ")"
+      (str "  " target " (" (format-env-type env-type) ")"
            (when (and show-project-dir? project-dir)
              (str " - " project-dir)))
-      (str "  " host ":" port " (not responding)"))))
+      (str "  " target " (not responding)"))))
 
 (defmethod tool-system/format-results :list-nrepl-ports [_ result]
   (if (empty? result)
     {:result ["No nREPL servers found.\n\nTo start a Clojure REPL with nREPL, run:\n  clojure -Sdeps '{:deps {nrepl/nrepl {:mvn/version \"1.3.0\"}}}' -M -m nrepl.cmdline"]
      :error false}
-    (let [valid-ports (filter :valid result)
-          current-project-ports (filter :matches-cwd valid-ports)
-          other-project-ports (remove :matches-cwd valid-ports)
-          current-count (count current-project-ports)
-          other-count (count other-project-ports)
-          total-count (count valid-ports)
-          current-dir (some :project-dir current-project-ports)
+    (let [valid-targets (filter :valid result)
+          current-project-targets (filter :matches-cwd valid-targets)
+          other-project-targets (remove :matches-cwd valid-targets)
+          current-count (count current-project-targets)
+          other-count (count other-project-targets)
+          total-count (count valid-targets)
+          current-dir (some :project-dir current-project-targets)
 
           output (str "Discovered nREPL servers:\n"
-                      (when (seq current-project-ports)
+                      (when (seq current-project-targets)
                         (str "\nIn current directory"
                              (when current-dir (str " (" current-dir ")"))
                              ":\n"
-                             (string/join "\n" (map #(format-port-info % false) current-project-ports))
+                             (string/join "\n" (map #(format-port-info % false) current-project-targets))
                              "\n"))
-                      (when (seq other-project-ports)
+                      (when (seq other-project-targets)
                         (str "\nIn other directories:\n"
-                             (string/join "\n" (map #(format-port-info % true) other-project-ports))
+                             (string/join "\n" (map #(format-port-info % true) other-project-targets))
                              "\n"))
                       (str "\nTotal: " total-count " server" (when (not= 1 total-count) "s")
                            (when (and (pos? current-count) (pos? other-count))

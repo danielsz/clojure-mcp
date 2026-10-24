@@ -208,11 +208,18 @@
   "Determine if we should auto-start an nREPL server based on conditions:
    1. CLI: start-nrepl-cmd AND project-dir provided in args
    2. Config: .clojure-mcp/config.edn exists with :start-nrepl-cmd
-   If :port is provided with :start-nrepl-cmd, uses fixed port instead of parsing."
+   If :port is provided with :start-nrepl-cmd, uses fixed port instead of parsing.
+   An explicit :socket always attaches to an existing server and never starts one."
   [nrepl-args]
-  (let [{:keys [start-nrepl-cmd project-dir port]} nrepl-args]
+  (let [{:keys [start-nrepl-cmd project-dir port socket]} nrepl-args]
     (cond
-      ;; Don't start if port provided but no start command (connecting to existing nREPL)
+      ;; An explicit Unix socket always means "attach", never auto-start
+      socket
+      (do
+        (log/debug "Unix socket provided, connecting to existing nREPL")
+        false)
+
+      ;; Don't start if a port is provided but no start command
       (and port (not start-nrepl-cmd))
       (do
         (log/debug "Port provided without start command, connecting to existing nREPL")
@@ -261,7 +268,8 @@
   "If :fallback-nrepl is enabled, ensure an nREPL is reachable -
    attaching to one if :port is provided and answering, otherwise
    spawning a local nREPL using `default-fallback-nrepl-cmd` (or an
-   explicit :fallback-nrepl-cmd override).
+   explicit :fallback-nrepl-cmd override). An explicit :socket is used
+   as-is and never triggers a fallback process.
 
    The spawned REPL runs in :fallback-nrepl-dir (default: :project-dir
    when supplied, else the user's home directory) so it inherits
@@ -273,12 +281,19 @@
 
    Returns nrepl-args possibly updated with the spawned :port and
    :nrepl-process. Returns nrepl-args unchanged when the flag is unset."
-  [{:keys [fallback-nrepl host port project-dir
+  [{:keys [fallback-nrepl host port socket project-dir
            fallback-nrepl-cmd fallback-nrepl-dir]
     :as nrepl-args}]
   (cond
     (not fallback-nrepl)
     nrepl-args
+
+    socket
+    (do
+      (log/debug "Fallback nREPL: explicit Unix socket provided; attaching")
+      (dissoc nrepl-args
+              :fallback-nrepl :fallback-nrepl-cmd :fallback-nrepl-dir
+              :start-nrepl-cmd))
 
     (and port (port-reachable? (or host "localhost") port fallback-probe-timeout-ms))
     (do
